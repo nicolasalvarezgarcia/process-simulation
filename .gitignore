@@ -1,0 +1,23 @@
+# --- Python Specific Files ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary files created by popular editors
+*.swp
+*~
+*.bak
+.DS_Store
+
+# --- Virtual Environment ---
+# Ignore the entire virtual environment directory
+# Your environment was named 'tank_sim_env'
+tank_sim_env/
+
+# --- Simulation Runtime/Output Files ---
+# These are topics you'd likely use for local testing or logging.
+# They should not be tracked in Git.
+#
+# If you decide to log your published data to a file (e.g., CSV):
+simulation_log.csv
+sim_results.txt
