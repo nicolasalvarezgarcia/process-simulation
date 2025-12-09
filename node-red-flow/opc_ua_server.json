@@ -59,8 +59,8 @@
         "correl": "",
         "expiry": "",
         "broker": "5ae85360cad5967c",
-        "x": 710,
-        "y": 180,
+        "x": 730,
+        "y": 340,
         "wires": []
     },
     {
@@ -84,8 +84,8 @@
         "topic": "lift_station/pump_status",
         "payload": "0",
         "payloadType": "num",
-        "x": 130,
-        "y": 180,
+        "x": 150,
+        "y": 340,
         "wires": [
             [
                 "8606a03eafba0362"
@@ -113,8 +113,8 @@
         "topic": "lift_station/pump_status",
         "payload": "1",
         "payloadType": "num",
-        "x": 130,
-        "y": 220,
+        "x": 150,
+        "y": 380,
         "wires": [
             [
                 "8606a03eafba0362"
@@ -142,8 +142,8 @@
         "topic": "lift_station/fab_outflow",
         "payload": "100",
         "payloadType": "num",
-        "x": 130,
-        "y": 260,
+        "x": 150,
+        "y": 420,
         "wires": [
             [
                 "8606a03eafba0362"
@@ -207,6 +207,55 @@
         "wires": [
             [
                 "296cc5dbef2dad2c"
+            ]
+        ]
+    },
+    {
+        "id": "c5da8afeab5f1ed3",
+        "type": "function",
+        "z": "58978e7cea16487b",
+        "name": "function 6",
+        "func": "// OPC UA to MQTT Publisher with Change Detection\n// Only publishes when values actually change\n\n// Get current values from flow context\nconst activeTanks = flow.get('activeTankCount');\nconst pumpStatus = flow.get('pumpStatus');\nconst fabRate = flow.get('fabOutflowRate');\n\n// Get previous values from node context (persistent across executions)\nconst prevActiveTanks = context.get('prevActiveTanks');\nconst prevPumpStatus = context.get('prevPumpStatus');\nconst prevFabRate = context.get('prevFabRate');\n\nconst messages = [];\n\n// Only publish if activeTankCount changed\nif (activeTanks !== prevActiveTanks && activeTanks !== undefined) {\n    messages.push({\n        topic: \"lift_station/active_tanks\",\n        payload: activeTanks.toString(),\n        qos: 0,\n        retain: false\n    });\n    context.set('prevActiveTanks', activeTanks);\n}\n\n// Only publish if pumpStatus changed\nif (pumpStatus !== prevPumpStatus && pumpStatus !== undefined) {\n    messages.push({\n        topic: \"lift_station/pump_status\",\n        payload: pumpStatus.toString(),\n        qos: 0,\n        retain: false\n    });\n    context.set('prevPumpStatus', pumpStatus);\n}\n\n// Only publish if fabOutflowRate changed\nif (fabRate !== prevFabRate && fabRate !== undefined) {\n    messages.push({\n        topic: \"lift_station/fab_outflow\",\n        payload: fabRate.toString(),\n        qos: 0,\n        retain: false\n    });\n    context.set('prevFabRate', fabRate);\n}\n\n// Update status\nif (messages.length > 0) {\n    node.status({\n        fill: \"green\",\n        shape: \"ring\",\n        text: `Updated ${messages.length} tag(s)`\n    });\n} else {\n    node.status({\n        fill: \"grey\",\n        shape: \"dot\",\n        text: `No changes`\n    });\n}\n\n// Return messages array\nreturn [messages];",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 440,
+        "y": 580,
+        "wires": [
+            [
+                "8606a03eafba0362"
+            ]
+        ]
+    },
+    {
+        "id": "419c88ff0854d841",
+        "type": "inject",
+        "z": "58978e7cea16487b",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "10",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 580,
+        "wires": [
+            [
+                "c5da8afeab5f1ed3"
             ]
         ]
     },
