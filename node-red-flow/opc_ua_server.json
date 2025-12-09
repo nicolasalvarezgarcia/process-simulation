@@ -1,0 +1,244 @@
+[
+    {
+        "id": "58978e7cea16487b",
+        "type": "tab",
+        "label": "process_simulation",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "4cbc4ce3cd5361bb",
+        "type": "mqtt in",
+        "z": "58978e7cea16487b",
+        "name": "",
+        "topic": "#",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "5ae85360cad5967c",
+        "nl": false,
+        "rap": false,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 100,
+        "wires": [
+            [
+                "d21188dcbc322135"
+            ]
+        ]
+    },
+    {
+        "id": "296cc5dbef2dad2c",
+        "type": "debug",
+        "z": "58978e7cea16487b",
+        "name": "debug 10",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 960,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "8606a03eafba0362",
+        "type": "mqtt out",
+        "z": "58978e7cea16487b",
+        "name": "",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "5ae85360cad5967c",
+        "x": 710,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "4b506bb60564a6fe",
+        "type": "inject",
+        "z": "58978e7cea16487b",
+        "name": "Shut off pump",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "lift_station/pump_status",
+        "payload": "0",
+        "payloadType": "num",
+        "x": 130,
+        "y": 180,
+        "wires": [
+            [
+                "8606a03eafba0362"
+            ]
+        ]
+    },
+    {
+        "id": "eaa1181ed5b95f0a",
+        "type": "inject",
+        "z": "58978e7cea16487b",
+        "name": "Turn on pump",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "lift_station/pump_status",
+        "payload": "1",
+        "payloadType": "num",
+        "x": 130,
+        "y": 220,
+        "wires": [
+            [
+                "8606a03eafba0362"
+            ]
+        ]
+    },
+    {
+        "id": "a03e57fb3c125678",
+        "type": "inject",
+        "z": "58978e7cea16487b",
+        "name": "Fab outflow",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "lift_station/fab_outflow",
+        "payload": "100",
+        "payloadType": "num",
+        "x": 130,
+        "y": 260,
+        "wires": [
+            [
+                "8606a03eafba0362"
+            ]
+        ]
+    },
+    {
+        "id": "5c2b8dcb10cabebb",
+        "type": "opcua-compact-server",
+        "z": "58978e7cea16487b",
+        "port": 54840,
+        "endpoint": "",
+        "productUri": "",
+        "acceptExternalCommands": true,
+        "maxAllowedSessionNumber": 10,
+        "maxConnectionsPerEndpoint": 10,
+        "maxAllowedSubscriptionNumber": 100,
+        "alternateHostname": "",
+        "name": "",
+        "showStatusActivities": false,
+        "showErrors": true,
+        "allowAnonymous": true,
+        "individualCerts": false,
+        "isAuditing": false,
+        "serverDiscovery": true,
+        "users": [],
+        "xmlsetsOPCUA": [],
+        "publicCertificateFile": "",
+        "privateCertificateFile": "",
+        "registerServerMethod": 1,
+        "discoveryServerEndpointUrl": "opc:tcp://localhost:54845",
+        "capabilitiesForMDNS": "",
+        "maxNodesPerRead": 1000,
+        "maxNodesPerWrite": 1000,
+        "maxNodesPerHistoryReadData": 100,
+        "maxNodesPerBrowse": 3000,
+        "maxBrowseContinuationPoints": 10,
+        "maxHistoryContinuationPoints": 10,
+        "delayToInit": 1000,
+        "delayToClose": 200,
+        "serverShutdownTimeout": 100,
+        "addressSpaceScript": "function constructAlarmAddressSpace(server, addressSpace, eventObjects, done) {\n  const opcua = coreServer.choreCompact.opcua;\n  const LocalizedText = opcua.LocalizedText;\n  const namespace = addressSpace.getOwnNamespace();\n\n  const Variant = opcua.Variant;\n  const DataType = opcua.DataType;\n  const DataValue = opcua.DataValue;\n\n  var flexServerInternals = this;\n\n  // Initialize tank simulation variables\n  this.sandboxFlowContext.set(\"currentVolume\", 0.0);\n  this.sandboxFlowContext.set(\"activeTankCount\", 2.0);\n  this.sandboxFlowContext.set(\"pumpStatus\", 1.0);\n  this.sandboxFlowContext.set(\"fabOutflowRate\", 100.0);\n  this.sandboxFlowContext.set(\"totalInflowRate\", 0.0);\n  this.sandboxFlowContext.set(\"totalOutflowRate\", 0.0);\n  this.sandboxFlowContext.set(\"simulationTime\", 0.0);\n\n  coreServer.debugLog(\"init dynamic address space\");\n  const rootFolder = addressSpace.findNode(\"RootFolder\");\n\n  node.warn(\"construct new address space for OPC UA\");\n\n  // Create main device folder\n  const liftStation = namespace.addFolder(rootFolder.objects, {\n    \"browseName\": \"LiftStation\"\n  });\n\n  // Create subfolders for organization\n  const processData = namespace.addFolder(liftStation, {\n    \"browseName\": \"ProcessData\"\n  });\n  const controlInputs = namespace.addFolder(liftStation, {\n    \"browseName\": \"ControlInputs\"\n  });\n  const calculatedValues = namespace.addFolder(liftStation, {\n    \"browseName\": \"CalculatedValues\"\n  });\n\n  // Process Data Variables (Read-Only)\n  const currentVolume = namespace.addVariable({\n    \"organizedBy\": processData,\n    \"browseName\": \"CurrentVolume\",\n    \"nodeId\": \"ns=1;s=LiftStation.CurrentVolume\",\n    \"dataType\": \"Double\",\n    \"value\": {\n      \"get\": function () {\n        return new Variant({\n          \"dataType\": DataType.Double,\n          \"value\": flexServerInternals.sandboxFlowContext.get(\"currentVolume\")\n        });\n      },\n      \"set\": function (variant) {\n        flexServerInternals.sandboxFlowContext.set(\n          \"currentVolume\",\n          parseFloat(variant.value)\n        );\n        return opcua.StatusCodes.Good;\n      }\n    }\n  });\n\n  const simulationTime = namespace.addVariable({\n    \"organizedBy\": processData,\n    \"browseName\": \"SimulationTime\",\n    \"nodeId\": \"ns=1;s=LiftStation.SimulationTime\",\n    \"dataType\": \"Double\",\n    \"value\": {\n      \"get\": function () {\n        return new Variant({\n          \"dataType\": DataType.Double,\n          \"value\": flexServerInternals.sandboxFlowContext.get(\"simulationTime\")\n        });\n      },\n      \"set\": function (variant) {\n        flexServerInternals.sandboxFlowContext.set(\n          \"simulationTime\",\n          parseFloat(variant.value)\n        );\n        return opcua.StatusCodes.Good;\n      }\n    }\n  });\n\n  // Control Input Variables (Writable)\n  const activeTankCount = namespace.addVariable({\n    \"organizedBy\": controlInputs,\n    \"browseName\": \"ActiveTankCount\",\n    \"nodeId\": \"ns=1;s=LiftStation.ActiveTankCount\",\n    \"dataType\": \"Double\",\n    \"value\": {\n      \"get\": function () {\n        return new Variant({\n          \"dataType\": DataType.Double,\n          \"value\": flexServerInternals.sandboxFlowContext.get(\"activeTankCount\")\n        });\n      },\n      \"set\": function (variant) {\n        flexServerInternals.sandboxFlowContext.set(\n          \"activeTankCount\",\n          parseFloat(variant.value)\n        );\n        return opcua.StatusCodes.Good;\n      }\n    }\n  });\n\n  const pumpStatus = namespace.addVariable({\n    \"organizedBy\": controlInputs,\n    \"browseName\": \"PumpStatus\",\n    \"nodeId\": \"ns=1;s=LiftStation.PumpStatus\",\n    \"dataType\": \"Double\",\n    \"value\": {\n      \"get\": function () {\n        return new Variant({\n          \"dataType\": DataType.Double,\n          \"value\": flexServerInternals.sandboxFlowContext.get(\"pumpStatus\")\n        });\n      },\n      \"set\": function (variant) {\n        flexServerInternals.sandboxFlowContext.set(\n          \"pumpStatus\",\n          parseFloat(variant.value)\n        );\n        return opcua.StatusCodes.Good;\n      }\n    }\n  });\n\n  const fabOutflowRate = namespace.addVariable({\n    \"organizedBy\": controlInputs,\n    \"browseName\": \"FabOutflowRate\",\n    \"nodeId\": \"ns=1;s=LiftStation.FabOutflowRate\",\n    \"dataType\": \"Double\",\n    \"value\": {\n      \"get\": function () {\n        return new Variant({\n          \"dataType\": DataType.Double,\n          \"value\": flexServerInternals.sandboxFlowContext.get(\"fabOutflowRate\")\n        });\n      },\n      \"set\": function (variant) {\n        flexServerInternals.sandboxFlowContext.set(\n          \"fabOutflowRate\",\n          parseFloat(variant.value)\n        );\n        return opcua.StatusCodes.Good;\n      }\n    }\n  });\n\n  // Calculated Values (Read-Only)\n  const totalInflowRate = namespace.addVariable({\n    \"organizedBy\": calculatedValues,\n    \"browseName\": \"TotalInflowRate\",\n    \"nodeId\": \"ns=1;s=LiftStation.TotalInflowRate\",\n    \"dataType\": \"Double\",\n    \"value\": {\n      \"get\": function () {\n        return new Variant({\n          \"dataType\": DataType.Double,\n          \"value\": flexServerInternals.sandboxFlowContext.get(\"totalInflowRate\")\n        });\n      },\n      \"set\": function (variant) {\n        flexServerInternals.sandboxFlowContext.set(\n          \"totalInflowRate\",\n          parseFloat(variant.value)\n        );\n        return opcua.StatusCodes.Good;\n      }\n    }\n  });\n\n  const totalOutflowRate = namespace.addVariable({\n    \"organizedBy\": calculatedValues,\n    \"browseName\": \"TotalOutflowRate\",\n    \"nodeId\": \"ns=1;s=LiftStation.TotalOutflowRate\",\n    \"dataType\": \"Double\",\n    \"value\": {\n      \"get\": function () {\n        return new Variant({\n          \"dataType\": DataType.Double,\n          \"value\": flexServerInternals.sandboxFlowContext.get(\"totalOutflowRate\")\n        });\n      },\n      \"set\": function (variant) {\n        flexServerInternals.sandboxFlowContext.set(\n          \"totalOutflowRate\",\n          parseFloat(variant.value)\n        );\n        return opcua.StatusCodes.Good;\n      }\n    }\n  });\n\n  // Create views for easy access\n  const viewProcessData = namespace.addView({\n    \"organizedBy\": rootFolder.views,\n    \"browseName\": \"LiftStation-ProcessData\"\n  });\n\n  const viewControlInputs = namespace.addView({\n    \"organizedBy\": rootFolder.views,\n    \"browseName\": \"LiftStation-ControlInputs\"\n  });\n\n  const viewCalculatedValues = namespace.addView({\n    \"organizedBy\": rootFolder.views,\n    \"browseName\": \"LiftStation-CalculatedValues\"\n  });\n\n  // Add references to views\n  viewProcessData.addReference({\n    \"referenceType\": \"Organizes\",\n    \"nodeId\": currentVolume.nodeId\n  });\n\n  viewProcessData.addReference({\n    \"referenceType\": \"Organizes\",\n    \"nodeId\": simulationTime.nodeId\n  });\n\n  viewControlInputs.addReference({\n    \"referenceType\": \"Organizes\",\n    \"nodeId\": activeTankCount.nodeId\n  });\n\n  viewControlInputs.addReference({\n    \"referenceType\": \"Organizes\",\n    \"nodeId\": pumpStatus.nodeId\n  });\n\n  viewControlInputs.addReference({\n    \"referenceType\": \"Organizes\",\n    \"nodeId\": fabOutflowRate.nodeId\n  });\n\n  viewCalculatedValues.addReference({\n    \"referenceType\": \"Organizes\",\n    \"nodeId\": totalInflowRate.nodeId\n  });\n\n  viewCalculatedValues.addReference({\n    \"referenceType\": \"Organizes\",\n    \"nodeId\": totalOutflowRate.nodeId\n  });\n\n  coreServer.debugLog(\"create dynamic address space done\");\n  node.warn(\"construction of new address space for OPC UA done\");\n\n  done();\n}",
+        "x": 1040,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "d21188dcbc322135",
+        "type": "function",
+        "z": "58978e7cea16487b",
+        "name": "function 1",
+        "func": "// MQTT to Flow Context Mapper\n// Subscribes to all lift station MQTT topics and updates flow variables\n\nconst topic = msg.topic;\nconst value = parseFloat(msg.payload);\n\n// Validate that payload is a valid number\nif (isNaN(value)) {\n    node.warn(`Invalid numeric value received on ${topic}: ${msg.payload}`);\n    return null;\n}\n\n// Map MQTT topics to flow context variables\nswitch (topic) {\n    case \"data/lift_station/current_volume\":\n        flow.set('currentVolume', value);\n        node.status({ fill: \"blue\", shape: \"dot\", text: `Volume: ${value.toFixed(2)} L` });\n        break;\n\n    case \"lift_station/active_tanks\":\n        flow.set('activeTankCount', value);\n        node.status({ fill: \"green\", shape: \"dot\", text: `Active Tanks: ${value}` });\n        break;\n\n    case \"lift_station/pump_status\":\n        flow.set('pumpStatus', value);\n        const pumpState = value === 1.0 ? \"ON\" : \"OFF\";\n        node.status({ fill: value === 1.0 ? \"green\" : \"red\", shape: \"dot\", text: `Pump: ${pumpState}` });\n        break;\n\n    case \"lift_station/fab_outflow\":\n        flow.set('fabOutflowRate', value);\n        node.status({ fill: \"yellow\", shape: \"dot\", text: `Fab Rate: ${value.toFixed(1)} L/min` });\n        break;\n\n    default:\n        node.warn(`Unknown topic: ${topic}`);\n        return null;\n}\n\n// Optional: Calculate derived values\nconst activeTanks = flow.get('activeTankCount') || 0;\nconst fabRate = flow.get('fabOutflowRate') || 0;\nconst pumpStat = flow.get('pumpStatus') || 0;\nconst pumpFlowRate = 60.0; // L/min (constant from simulation)\n\nconst totalInflow = fabRate * activeTanks;\nconst totalOutflow = pumpFlowRate * pumpStat;\n\nflow.set('totalInflowRate', totalInflow);\nflow.set('totalOutflowRate', totalOutflow);\n\n// Pass through the message for debugging or chaining\nmsg.flowContext = {\n    currentVolume: flow.get('currentVolume'),\n    activeTankCount: flow.get('activeTankCount'),\n    pumpStatus: flow.get('pumpStatus'),\n    fabOutflowRate: flow.get('fabOutflowRate'),\n    totalInflowRate: flow.get('totalInflowRate'),\n    totalOutflowRate: flow.get('totalOutflowRate')\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 100,
+        "wires": [
+            [
+                "296cc5dbef2dad2c"
+            ]
+        ]
+    },
+    {
+        "id": "5ae85360cad5967c",
+        "type": "mqtt-broker",
+        "name": "Test",
+        "broker": "localhost",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "5",
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]

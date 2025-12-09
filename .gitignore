@@ -13,6 +13,7 @@ __pycache__/
 # Ignore the entire virtual environment directory
 # Your environment was named 'tank_sim_env'
 tank_sim_env/
+.venv/
 
 # --- Simulation Runtime/Output Files ---
 # These are topics you'd likely use for local testing or logging.

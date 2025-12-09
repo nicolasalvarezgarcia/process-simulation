@@ -1,180 +1,275 @@
+"""MQTT-based tank simulation client.
+
+This module implements a real-time simulation controller for a dual-tank lift station.
+It uses MQTT for dynamic control inputs and data publishing, running the physical model
+in 1-second segments to maintain real-time synchronization (1 sim second = 1 real second).
+
+The simulation subscribes to control topics for dynamic parameter updates and publishes
+the current tank volume at each time step. This architecture allows external systems
+to control the simulation in real-time via MQTT messaging.
+"""
+
 import numpy as np
 import time
 import threading
 import sys
+from typing import Any
 from paho.mqtt import client as mqtt_client
 from scipy.integrate import solve_ivp
-# Import core modeling functions and fixed constants
-from tank_model import ode_function, overflow_event, C_TOTAL, R_PUMP
 
-# --- 1. MQTT Configuration ---
-BROKER = 'localhost'
-PORT = 1883           
-CLIENT_ID = f'python-simulator-{time.time()}'
+from tank_model import (
+    calculate_volume_change_rate,
+    detect_capacity_reached,
+    TOTAL_SYSTEM_CAPACITY_LITERS,
+    PUMP_FLOW_RATE_LITERS_PER_MIN
+)
 
-# Control Topics (Inputs)
-TOPIC_ACTIVE_TANKS = "lift_station/active_tanks"
-TOPIC_PUMP_STATUS = "lift_station/pump_status"
-TOPIC_FAB_OUTFLOW = "lift_station/fab_outflow" 
+# MQTT Broker Configuration
+MQTT_BROKER_HOST = 'localhost'
+MQTT_BROKER_PORT = 1883
+MQTT_CLIENT_ID = f'python-simulator-{time.time()}'
 
-# Data Topic (Output)
-TOPIC_VOLUME_OUT = "data/lift_station/current_volume" 
+# MQTT Topics - Control Inputs (subscribed)
+TOPIC_ACTIVE_TANK_COUNT = "lift_station/active_tanks"
+TOPIC_PUMP_OPERATIONAL_STATUS = "lift_station/pump_status"
+TOPIC_FAB_OUTFLOW_RATE = "lift_station/fab_outflow"
 
-# --- 2. Simulation Global State ---
-current_volume = 0.0      # L (V_initial)
-sim_time_elapsed = 0.0    # minutes
-is_running = True
+# MQTT Topics - Data Output (published)
+TOPIC_CURRENT_VOLUME = "data/lift_station/current_volume" 
 
-# Dynamic Control Variables (Initial/Default Values)
-N_active = 2.0            # Number of active filling tanks
-S_pump = 1.0              # Pump status (1.0 = ON)
-R_fab = 100.0             # Fab Outflow Rate (L/min)
+# Simulation State Variables
+current_tank_volume_liters = 0.0
+simulation_time_elapsed_minutes = 0.0
+is_simulation_running = True
 
-# Simulation Step Size
-SIMULATION_SEGMENT_DURATION = 1.0 / 60.0 # 1 second converted to minutes
+# Dynamic Control Parameters (updated via MQTT messages)
+active_tank_count = 2.0
+pump_operational_status = 1.0  # 1.0 = ON, 0.0 = OFF
+fab_outflow_rate_per_tank = 100.0  # L/min
 
-# --- 3. MQTT Callback Functions ---
+# Simulation timing configuration
+SIMULATION_STEP_DURATION_MINUTES = 1.0 / 60.0  # 1 second in minutes
 
-def on_connect(client, userdata, flags, rc):
-    """Callback triggered upon connecting to the broker."""
-    if rc == 0:
+def handle_broker_connection(client: mqtt_client.Client, 
+                            userdata: Any, 
+                            flags: dict, 
+                            return_code: int) -> None:
+    """Handle MQTT broker connection event.
+    
+    This callback is triggered when the client successfully connects to the broker.
+    It subscribes to all control topics to receive dynamic parameter updates.
+    
+    Args:
+        client: The MQTT client instance
+        userdata: User-defined data (unused)
+        flags: Connection flags from broker
+        return_code: Connection result code (0 = success)
+    """
+    if return_code == 0:
         print("Connected to MQTT Broker!")
-        # Subscribe to all three dynamic control topics
         client.subscribe([
-            (TOPIC_ACTIVE_TANKS, 0), 
-            (TOPIC_PUMP_STATUS, 0),
-            (TOPIC_FAB_OUTFLOW, 0)
+            (TOPIC_ACTIVE_TANK_COUNT, 0),
+            (TOPIC_PUMP_OPERATIONAL_STATUS, 0),
+            (TOPIC_FAB_OUTFLOW_RATE, 0)
         ])
     else:
-        print(f"Failed to connect, return code {rc}")
+        print(f"Failed to connect, return code {return_code}")
 
-def on_message(client, userdata, msg):
-    """Callback triggered when a message is received on a subscribed topic."""
-    global N_active, S_pump, R_fab, sim_time_elapsed
+def handle_control_message(client: mqtt_client.Client, 
+                          userdata: Any, 
+                          message: mqtt_client.MQTTMessage) -> None:
+    """Process incoming MQTT control messages.
+    
+    This callback updates the simulation's dynamic parameters when control
+    messages are received. It handles three control topics: active tank count,
+    pump status, and fab outflow rate.
+    
+    Args:
+        client: The MQTT client instance
+        userdata: User-defined data (unused)
+        message: The received MQTT message containing topic and payload
+    """
+    global active_tank_count, pump_operational_status, fab_outflow_rate_per_tank
+    global simulation_time_elapsed_minutes
     
     try:
-        # Decode and convert payload to float
-        payload = float(msg.payload.decode())
+        control_value = float(message.payload.decode())
         
-        if msg.topic == TOPIC_ACTIVE_TANKS:
-            N_active = payload
-            print(f"[{sim_time_elapsed:.2f} min] CONTROL: Active Tanks set to {N_active:.0f}")
+        if message.topic == TOPIC_ACTIVE_TANK_COUNT:
+            active_tank_count = control_value
+            print(f"[{simulation_time_elapsed_minutes:.2f} min] CONTROL: Active Tanks set to {active_tank_count:.0f}")
 
-        elif msg.topic == TOPIC_PUMP_STATUS:
-            S_pump = payload
-            print(f"[{sim_time_elapsed:.2f} min] CONTROL: Pump Status set to {S_pump:.0f}")
+        elif message.topic == TOPIC_PUMP_OPERATIONAL_STATUS:
+            pump_operational_status = control_value
+            print(f"[{simulation_time_elapsed_minutes:.2f} min] CONTROL: Pump Status set to {pump_operational_status:.0f}")
             
-        elif msg.topic == TOPIC_FAB_OUTFLOW:
-            R_fab = payload
-            print(f"[{sim_time_elapsed:.2f} min] CONTROL: Fab Outflow (R_fab) set to {R_fab:.1f} L/min")
+        elif message.topic == TOPIC_FAB_OUTFLOW_RATE:
+            fab_outflow_rate_per_tank = control_value
+            print(f"[{simulation_time_elapsed_minutes:.2f} min] CONTROL: Fab Outflow set to {fab_outflow_rate_per_tank:.1f} L/min")
             
     except ValueError:
-        print(f"Error: Received non-numeric payload on topic {msg.topic}")
-    except Exception as e:
-        print(f"An unexpected error occurred in on_message: {e}")
+        print(f"Error: Received non-numeric payload '{message.payload.decode()}' on topic {message.topic}")
+    except Exception as error:
+        print(f"Unexpected error processing message: {error}")
 
-# --- 4. Main Simulation Controller Loop ---
+def calculate_flow_rates() -> tuple[float, float]:
+    """Calculate current inflow and outflow rates based on control parameters.
+    
+    Returns:
+        Tuple of (total_inflow_rate, total_outflow_rate) in L/min
+    """
+    total_inflow_rate = fab_outflow_rate_per_tank * active_tank_count
+    total_outflow_rate = PUMP_FLOW_RATE_LITERS_PER_MIN * pump_operational_status
+    return total_inflow_rate, total_outflow_rate
 
-def simulate_and_publish(client):
+
+def format_status_display(elapsed_seconds: float, 
+                         elapsed_minutes: float, 
+                         volume: float, 
+                         inflow_rate: float, 
+                         outflow_rate: float) -> str:
+    """Format the current simulation status for console display.
+    
+    Args:
+        elapsed_seconds: Simulation time in seconds
+        elapsed_minutes: Simulation time in minutes
+        volume: Current tank volume in liters
+        inflow_rate: Current total inflow rate in L/min
+        outflow_rate: Current total outflow rate in L/min
+        
+    Returns:
+        Formatted status string for display
     """
-    Runs the simulation by solving the ODE in 1-second segments, 
-    publishing the result, and pausing for 1 second of real-time.
+    status_indicator = 'OVERFLOW' if volume >= TOTAL_SYSTEM_CAPACITY_LITERS else 'OK'
+    return (
+        f"[T: {elapsed_seconds:.0f} sec | {elapsed_minutes:.2f} min] "
+        f"| V: {volume:.0f} L "
+        f"| R_in: {inflow_rate:.0f} | R_out: {outflow_rate:.0f} "
+        f"| Status: {status_indicator}"
+    )
+
+
+def run_simulation_loop(mqtt_client: mqtt_client.Client) -> None:
+    """Execute the main simulation control loop.
+    
+    This function runs the ODE solver in 1-second segments, synchronized with
+    real-time. Each iteration solves the differential equation for the current
+    control parameters, updates the global state, publishes results via MQTT,
+    and displays status information.
+    
+    The loop continues until is_simulation_running is set to False.
+    
+    Args:
+        mqtt_client: Connected MQTT client for publishing volume data
     """
-    global current_volume, sim_time_elapsed, N_active, S_pump, R_fab, is_running
+    global current_tank_volume_liters, simulation_time_elapsed_minutes
+    global active_tank_count, pump_operational_status, fab_outflow_rate_per_tank
+    global is_simulation_running
 
     print("--- Simulation Controller Started (1-second step size) ---")
     
-    # Ensure event configuration
-    overflow_event.terminal = True
-    overflow_event.direction = 1
+    detect_capacity_reached.terminal = True
+    detect_capacity_reached.direction = 1
 
-    while is_running:
-        # 1. PAUSE for 1 second of real time to synchronize speed
-        time.sleep(1) 
-
-        # 2. Define segment time span (1 second duration)
-        t_start = sim_time_elapsed
-        t_end = t_start + SIMULATION_SEGMENT_DURATION
+    while is_simulation_running:
+        time.sleep(1)  # Synchronize with real-time (1 second pause)
         
-        # 3. Get current parameters (R_fab is dynamic, R_PUMP is fixed)
-        params = (R_fab, R_PUMP, N_active, S_pump, C_TOTAL)
+        segment_start_time = simulation_time_elapsed_minutes
+        segment_end_time = segment_start_time + SIMULATION_STEP_DURATION_MINUTES
+        
+        model_parameters = (
+            fab_outflow_rate_per_tank,
+            PUMP_FLOW_RATE_LITERS_PER_MIN,
+            active_tank_count,
+            pump_operational_status,
+            TOTAL_SYSTEM_CAPACITY_LITERS
+        )
 
         try:
-            # 4. Run the solver for the 1-second segment
-            result = solve_ivp(
-                ode_function, 
-                t_span=[t_start, t_end], 
-                y0=np.array([current_volume]), 
-                events=overflow_event, 
-                args=params
+            solver_result = solve_ivp(
+                calculate_volume_change_rate,
+                t_span=[segment_start_time, segment_end_time],
+                y0=np.array([current_tank_volume_liters]),
+                events=detect_capacity_reached,
+                args=model_parameters
             )
-        except Exception as e:
-            print(f"\n[ERROR] Solver failed: {e}")
-            is_running = False
+        except Exception as solver_error:
+            print(f"\n[ERROR] Solver failed: {solver_error}")
+            is_simulation_running = False
             break
 
-        # 5. Update Global State
-        if result.t.size > 0:
-            sim_time_elapsed = result.t[-1]
-            current_volume = result.y[0][-1]
+        if solver_result.t.size > 0:
+            simulation_time_elapsed_minutes = solver_result.t[-1]
+            current_tank_volume_liters = solver_result.y[0][-1]
         
-        # Handle overflow capping for volume reporting
-        if current_volume > C_TOTAL:
-            current_volume = C_TOTAL
+        # Ensure volume doesn't exceed capacity in reporting
+        if current_tank_volume_liters > TOTAL_SYSTEM_CAPACITY_LITERS:
+            current_tank_volume_liters = TOTAL_SYSTEM_CAPACITY_LITERS
             
-        # 6. Publish Results and Display Status
+        total_inflow, total_outflow = calculate_flow_rates()
         
-        R_in = R_fab * N_active
-        R_out = R_PUMP * S_pump
+        # Publish current volume to MQTT
+        volume_payload = f"{current_tank_volume_liters:.2f}"
+        mqtt_client.publish(TOPIC_CURRENT_VOLUME, volume_payload, qos=0)
         
-        # Publish Volume
-        payload = f"{current_volume:.2f}"
-        client.publish(TOPIC_VOLUME_OUT, payload, qos=0)
-        
-        # Display status (using sys.stdout.write for smooth updates)
-        status_msg = (
-            f"[T: {sim_time_elapsed*60:.0f} sec | {sim_time_elapsed:.2f} min] "
-            f"| V: {current_volume:.0f} L "
-            f"| R_in: {R_in:.0f} | R_out: {R_out:.0f} "
-            f"| Status: {'OVERFLOW' if current_volume >= C_TOTAL else 'OK'}"
+        # Display real-time status
+        elapsed_seconds = simulation_time_elapsed_minutes * 60
+        status_message = format_status_display(
+            elapsed_seconds,
+            simulation_time_elapsed_minutes,
+            current_tank_volume_liters,
+            total_inflow,
+            total_outflow
         )
-        sys.stdout.write(status_msg + '                                        \r')
+        sys.stdout.write(status_message + '                                        \r')
         sys.stdout.flush()
 
-# --- 5. Main Execution ---
+def initialize_and_run_mqtt_simulation() -> None:
+    """Initialize MQTT client and start the simulation.
+    
+    This function sets up the MQTT client with appropriate callbacks,
+    connects to the broker, and launches the simulation loop in a
+    separate thread. The main thread remains active to handle MQTT
+    messages and graceful shutdown on keyboard interrupt.
+    """
+    global is_simulation_running
 
-def run_mqtt_client():
-    global is_running 
+    mqtt_sim_client = mqtt_client.Client(
+        mqtt_client.CallbackAPIVersion.VERSION1,
+        MQTT_CLIENT_ID
+    )
+    mqtt_sim_client.on_connect = handle_broker_connection
+    mqtt_sim_client.on_message = handle_control_message
 
-    client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION1, CLIENT_ID)
-    client.on_connect = on_connect
-    client.on_message = on_message
-
-    # Start the non-blocking network loop
     try:
-        client.connect(BROKER, PORT)
+        mqtt_sim_client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT)
     except ConnectionRefusedError:
-        print(f"ERROR: Could not connect to broker at {BROKER}:{PORT}. Is the broker running?")
+        print(f"ERROR: Could not connect to broker at {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}.")
+        print("Please ensure the MQTT broker is running.")
+        return
+    except Exception as connection_error:
+        print(f"ERROR: Failed to connect to MQTT broker: {connection_error}")
         return
 
-    client.loop_start()
+    mqtt_sim_client.loop_start()
 
-    # Start the simulation loop in a separate thread
-    sim_thread = threading.Thread(target=simulate_and_publish, args=(client,))
-    sim_thread.daemon = True
-    sim_thread.start()
+    simulation_thread = threading.Thread(
+        target=run_simulation_loop,
+        args=(mqtt_sim_client,),
+        daemon=True
+    )
+    simulation_thread.start()
 
-    # Keep the main thread alive until user stops
     try:
-        while is_running:
+        while is_simulation_running:
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nSimulation stopping...")
     finally:
-        is_running = False
-        client.loop_stop()
+        is_simulation_running = False
+        mqtt_sim_client.loop_stop()
         print("MQTT client and simulation stopped.")
 
 
 if __name__ == '__main__':
-    run_mqtt_client()
+    initialize_and_run_mqtt_simulation()
