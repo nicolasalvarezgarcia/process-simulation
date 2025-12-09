@@ -12,11 +12,6 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-*Note: If you encounter an execution policy error, run:*
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
 ## Install Dependencies
 
 ```powershell
